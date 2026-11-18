@@ -83,6 +83,9 @@ pub fn start() {
             }
         };
         let pen_target = canvas.clone();
+        // Connected before the runner starts, so a host still hears `failed` when it can't.
+        let bridge = crate::host::connect(&canvas);
+        let started = bridge.clone();
         let runner = eframe::WebRunner::new();
         // After the runner's own panic handler, so the message is kept and the runner's handler
         // still runs (a panic aborts the module).
@@ -103,7 +106,10 @@ pub fn start() {
                     let actions_revision = session.actions.list.revision();
                     preset_warnings.extend(warnings);
                     let drag = listen_drag(&pen_target);
-                    let mut services = services(inbox.clone(), place_inbox.clone(), drag_pos_service(pen_target.clone(), drag));
+                    if let Some(bridge) = &bridge {
+                        bridge.listen(cc.egui_ctx.clone());
+                    }
+                    let mut services = services(inbox.clone(), place_inbox.clone(), drag_pos_service(pen_target.clone(), drag), bridge.clone());
                     let mut initial = Some(load_initial_preferences(&presets, database.is_some() && !session.actions.list.actions().is_empty()));
                     services.load_prefs = Some(Box::new(move || initial.take().unwrap_or_else(stored_preferences)));
                     let mut app = PhotocraftApp::with_context(cc.egui_ctx.clone(), session, services);
@@ -125,9 +131,14 @@ pub fn start() {
                         app.set_wgpu(rs);
                     }
                     let unsaved = Arc::new(AtomicBool::new(false));
-                    guard_unload(unsaved.clone());
+                    // A hosting page keeps the document and hears about unsaved changes
+                    // (`dirty`): leaving it is the host's question, not the browser's.
+                    if bridge.is_none() {
+                        guard_unload(unsaved.clone());
+                    }
                     Ok(Box::new(WebShell {
                         app,
+                        bridge,
                         inbox,
                         place_inbox,
                         unsaved,
@@ -141,6 +152,12 @@ pub fn start() {
                 }),
             )
             .await;
+        if let Some(bridge) = &started {
+            match &result {
+                Ok(()) => bridge.ready(),
+                Err(e) => bridge.failed(&format!("{e:?}")),
+            }
+        }
         if let Some(el) = document.get_element_by_id("photocraft_loading") {
             match result {
                 Ok(()) => el.remove(),
@@ -363,6 +380,8 @@ async fn fetch_bytes(url: &str, integrity: Option<&str>) -> Result<Vec<u8>, Stri
 /// so the app's own drop path can't handle them) and feed them through the inboxes.
 struct WebShell {
     app: Box<PhotocraftApp>,
+    /// The page hosting the app, when one does (`crate::host`).
+    bridge: Option<crate::host::Bridge>,
     /// Dropped files to open as documents.
     inbox: Inbox,
     /// Dropped files to place on the active document's canvas.
@@ -407,6 +426,11 @@ impl WebShell {
             });
         }
         self.unsaved.store(self.app.has_unsaved_work() || self.presets.unsaved(), Ordering::Relaxed);
+        // Only the documents: the host stores those, while brush presets and Actions are kept in
+        // this browser's storage, not in any file it holds.
+        if let Some(bridge) = &self.bridge {
+            bridge.dirty(self.app.has_unsaved_work());
+        }
     }
 
     /// Fetches the served families asked for (picked in a font menu, or needed by a layout) and
@@ -497,6 +521,13 @@ impl eframe::App for WebShell {
                 }
             });
         }
+        if let Some(bridge) = &self.bridge {
+            for (name, bytes) in bridge.take_opened() {
+                if let Err(e) = self.app.open_hosted_bytes(&name, &bytes) {
+                    self.app.open_failed(&name, &e);
+                }
+            }
+        }
         self.serve_fonts(ctx);
         self.app.logic_frame(ctx, frame);
         self.save_presets(ctx);
@@ -550,7 +581,7 @@ impl eframe::App for WebShell {
     }
 }
 
-fn services(inbox: Inbox, place_inbox: PlaceInbox, cursor_pos: photocraft_ui_egui::CursorPosFn) -> Services {
+fn services(inbox: Inbox, place_inbox: PlaceInbox, cursor_pos: photocraft_ui_egui::CursorPosFn, bridge: Option<crate::host::Bridge>) -> Services {
     Services {
         import: Some(Box::new(|name: &str, bytes: &[u8], opts: &photocraft_io::ImportOptions| {
             photocraft_io::import_with_options(name, bytes, opts).map(|r| (r.document, r.warnings)).map_err(|e| e.to_string())
@@ -594,9 +625,11 @@ fn services(inbox: Inbox, place_inbox: PlaceInbox, cursor_pos: photocraft_ui_egu
                 reply.send(Some(FileDialogAnswer::SaveTo(name)));
             }
         })),
-        write: Some(Box::new(|path: &str, bytes: &[u8]| download(path, bytes))),
-        // A download may be cancelled and never reports back: it doesn't save the document.
-        write_unconfirmed: true,
+        write: Some(save_or_download(bridge.clone(), false)),
+        write_as: bridge.clone().map(|bridge| save_or_download(Some(bridge), true)),
+        // A download may be cancelled and never reports back: it doesn't save the document. A
+        // hosting page has the file once it is posted.
+        write_unconfirmed: bridge.is_none(),
         inbox: Some(inbox),
         place_inbox: Some(place_inbox),
         cursor_pos: Some(cursor_pos),
@@ -649,6 +682,14 @@ fn save_local_preferences(text: &str) -> Result<(), String> {
     // bindings, including removals, belong to the same IndexedDB record as their definitions.
     crate::preset_bridge::replace_action_keys(&mut ordinary, &legacy)?;
     storage.set_item(PREFS_KEY, &ordinary.to_string()).map_err(|e| format!("{e:?}"))
+}
+
+/// A file the app hands the user: to the host page when hosted, else a browser download.
+fn save_or_download(bridge: Option<crate::host::Bridge>, save_as: bool) -> photocraft_ui_egui::WriteFn {
+    Box::new(move |path: &str, bytes: &[u8]| match &bridge {
+        Some(bridge) => bridge.save(path, bytes, save_as),
+        None => download(path, bytes),
+    })
 }
 
 /// Trigger a browser download of `bytes` named after the last component of `path`.

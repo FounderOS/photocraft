@@ -526,6 +526,10 @@ pub struct Services {
     pub file_dialog: Option<FileDialogFn>,
     /// Write bytes to a path (native) or trigger a download (web).
     pub write: Option<WriteFn>,
+    /// Web: Save As… and Save a Copy… where saving is a download. They hand the document over as
+    /// a new file, so a page hosting the app stores it under a new name instead of over the file
+    /// it opened. `None`: they go to `write` as Save does.
+    pub write_as: Option<WriteFn>,
     /// Size and modification time of a file (native); `None` on the web, where Save never
     /// writes back to a file.
     pub file_stamp: Option<FileStampFn>,

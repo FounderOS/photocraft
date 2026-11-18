@@ -790,7 +790,7 @@ pub(crate) fn write_copy(app: &mut PhotocraftApp, doc: &photocraft_doc::Document
     crate::app::ensure_memory_to_save(doc, path)?;
     let export = app.services.export.as_ref().ok_or("no exporter configured")?;
     let (bytes, warnings) = export(doc, path, &settings)?;
-    let write = app.services.write.as_mut().ok_or("no writer configured")?;
+    let write = app.writer(true)?;
     write(path, &bytes)?;
     app.detach_others_from_file(path, doc.id);
     let template = "Saved a copy as {path}";

@@ -650,6 +650,9 @@ pub struct PhotocraftApp {
     /// A save parked behind a format's options prompt (TIFF, Targa, JPEG, DDS), run when the
     /// prompt closes (`format_prompts`).
     pub(crate) parked_save: Option<format_prompts::ParkedSave>,
+    /// The save being written makes a new file (Save As…, Save a Copy…), so it goes to
+    /// `Services::write_as` (see [`PhotocraftApp::writing_new_file`]).
+    pub(crate) saving_new_file: bool,
     /// Where each document was last saved or exported to through a dialog (#1826): its next Save
     /// As or export dialog starts there rather than beside the document. Session-only.
     pub(crate) save_dirs: HashMap<photocraft_doc::DocId, std::path::PathBuf>,

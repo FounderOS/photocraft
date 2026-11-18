@@ -346,3 +346,7 @@ egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "e9711c
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
 
 
+# WHY: our fork of craft-libs adds cross-origin parent support to craft-web-host (an allowlisted parent named by
+# ?parentOrigin); everything else in craft-libs stays on the revs pinned above. Remove when upstream has it.
+[patch."https://github.com/storytold/craft-libs"]
+craft-web-host = { git = "https://github.com/FounderOS/craft-libs", branch = "founderos/main" }

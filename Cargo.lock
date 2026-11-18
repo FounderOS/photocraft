@@ -2357,6 +2357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-web-host"
+version = "0.1.0"
+source = "git+https://github.com/FounderOS/craft-libs?branch=founderos%2Fmain#c3008ca94135723adcdb72951e78477157f9182f"
+dependencies = [
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "craft-win32"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=a6b9d9c986f7c4c399632d72d9a4a8c8ea0b86e9#a6b9d9c986f7c4c399632d72d9a4a8c8ea0b86e9"
@@ -6727,6 +6736,7 @@ version = "0.23.1"
 dependencies = [
  "craft-image-codecs",
  "craft-psd",
+ "craft-web-host",
  "eframe",
  "egui",
  "js-sys",

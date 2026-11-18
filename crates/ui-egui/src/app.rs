@@ -202,6 +202,7 @@ impl PhotocraftApp {
             updates_rt: Default::default(),
             discard: None,
             parked_save: None,
+            saving_new_file: false,
             save_dirs: HashMap::new(),
             disk_stamps: HashMap::new(),
             held_opens: Default::default(),

@@ -67,6 +67,34 @@ impl PhotocraftApp {
         self.open_bytes_from(name, bytes, None)
     }
 
+    /// [`Self::open_bytes`] for a file a page hosting the web app hands over by name. A layered
+    /// document (.pcraft, PSD, PSB, OpenRaster) takes the name as its file, as one opened from
+    /// disk does, so File › Save gives the host the same file back; without one, Save asks for a
+    /// new file (offered as a PSD). Other files open as dropped ones do.
+    pub fn open_hosted_bytes(&mut self, name: &str, bytes: &[u8]) -> Result<Vec<String>, String> {
+        let own = photocraft_engine::file_cmds::saves_in_place(name).then_some(name);
+        self.open_bytes_from(name, bytes, own)
+    }
+
+    /// Runs `f` with the saves it writes going out as a new file (`new_file`: Save As…, Save a
+    /// Copy…) or as the document's own (Save), whichever was asked for.
+    pub(crate) fn writing_new_file<T>(&mut self, new_file: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+        let outer = std::mem::replace(&mut self.saving_new_file, new_file);
+        let r = f(self);
+        self.saving_new_file = outer;
+        r
+    }
+
+    /// Where a save's bytes go: `Services::write_as` for a new file when the shell has one (a
+    /// hosting page stores it beside the opened file, not over it), else `write`.
+    pub(crate) fn writer(&mut self, new_file: bool) -> Result<&mut crate::services::WriteFn, String> {
+        let services = &mut self.services;
+        match services.write_as.as_mut().filter(|_| new_file) {
+            Some(write) => Ok(write),
+            None => services.write.as_mut().ok_or_else(|| "no writer configured".to_string()),
+        }
+    }
+
     /// [`Self::open_bytes`] for a file read from `path` (File › Save writes back there; it goes
     /// to Open Recent), when known.
     pub(crate) fn open_bytes_from(&mut self, name: &str, bytes: &[u8], path: Option<&str>) -> Result<Vec<String>, String> {
@@ -271,7 +299,8 @@ impl PhotocraftApp {
                     return r;
                 }
                 let from = app.session.journal.len();
-                let r = app.save_to(path.clone(), choices)?;
+                // Save As… hands over a new file; a Save that had to ask for a name is still a Save.
+                let r = app.writing_new_file(!plain_save, |app| app.save_to(path.clone(), choices))?;
                 if plain_save && own.as_deref() == Some(path.as_str()) {
                     app.journal_as_plain_save(&path, from);
                 }
@@ -592,7 +621,7 @@ impl PhotocraftApp {
         let (doc, written, previous) = (st.doc.id, st.revision, st.saved_revision);
         let export = self.services.export.as_ref().ok_or("no exporter configured")?;
         let (bytes, warnings) = export(&st.doc, &path, settings)?;
-        let write = self.services.write.as_mut().ok_or("no writer configured")?;
+        let write = self.writer(self.saving_new_file)?;
         write(&path, &bytes)?;
         let revision = saved_revision_after_write(!self.services.write_unconfirmed, written, previous);
         self.saved(doc, revision, &path, &warnings, copy);
@@ -771,7 +800,7 @@ impl PhotocraftApp {
             // Before the save renames the document: a Save As that keeps its own name records
             // only the folder (#5305).
             app.record_answered_save_as(record, &mut step);
-            app.write_document(path, settings, copy)
+            app.writing_new_file(record != "file.save", |app| app.write_document(path, settings, copy))
         });
         if written.is_ok() {
             photocraft_engine::actions_cmds::note_automation_step(&mut self.session, record, &step);

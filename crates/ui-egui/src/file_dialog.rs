@@ -507,3 +507,7 @@ fn read_picked(picked: Picked) -> Result<(String, Vec<u8>), String> {
 #[cfg(test)]
 #[path = "file_dialog/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "file_dialog/host_save_tests.rs"]
+mod host_save_tests;
