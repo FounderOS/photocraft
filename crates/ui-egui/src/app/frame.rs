@@ -88,7 +88,7 @@ impl PhotocraftApp {
         // So does selecting another layer or document by any route (#6483).
         type_tool::end_if_left(self);
         transform_tool::end_if_left(self);
-        prefs_ui::tick(self, ctx, std::time::Instant::now());
+        prefs_ui::tick(self, ctx, web_time::Instant::now());
         updates_ui::tick(self);
         monitor_status::poll_frame(self, ctx, frame);
         // Control requests and persisted preferences can change the language in this frame.

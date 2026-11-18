@@ -1,5 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+// The web has no `std` clock (`Instant::now` panics there), and no autosave.
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
+#[cfg(not(target_arch = "wasm32"))]
 use craft::platform::autosave::{AutosaveDoc, interval_for_minutes};
 
 use super::appearance::{canvas_style, sync_appearance, sync_display_scale, sync_tooltips};
@@ -38,8 +43,11 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context, now: Instant) {
         gpu.set_style(style);
         app.prefs_rt.gpu_style = Some(style);
     }
+    #[cfg(not(target_arch = "wasm32"))]
     autosave(app, now);
-    if let Some(at) = [save_at, app.autosave.deadline()].into_iter().flatten().min() {
+    #[cfg(not(target_arch = "wasm32"))]
+    let save_at = [save_at, app.autosave.deadline()].into_iter().flatten().min();
+    if let Some(at) = save_at {
         ctx.request_repaint_after(at.saturating_duration_since(now));
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -197,6 +205,7 @@ fn link_updates(app: &mut PhotocraftApp, ctx: &egui::Context) {
 ///
 /// A saved or closed document needs no `Autosave::forget` here: the timer's next `due` finds it
 /// clean or gone and lists it in `discard` (craft-platform autosave/timer.rs:124-132).
+#[cfg(not(target_arch = "wasm32"))]
 fn autosave(app: &mut PhotocraftApp, now: Instant) {
     if app.services.autosave.is_none() {
         return;
@@ -241,6 +250,7 @@ fn autosave(app: &mut PhotocraftApp, now: Instant) {
 }
 
 /// The status line of a failed autosave (`Autosave::finished`'s text); the next interval retries.
+#[cfg(not(target_arch = "wasm32"))]
 fn autosave_failed(app: &mut PhotocraftApp, text: String) {
     app.ui.status = text;
     app.ui.status_error = true;
