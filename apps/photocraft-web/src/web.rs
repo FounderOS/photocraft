@@ -12,7 +12,9 @@ use photocraft_ui_egui::served_fonts;
 use photocraft_ui_egui::theme::AppTheme;
 use photocraft_ui_egui::{FileDialogAnswer, FileDialogRequest, PhotocraftApp, Services};
 use wasm_bindgen::JsCast as _;
+use web_time::Instant;
 
+use crate::autosave::Autosave;
 use crate::preset_bridge::{ActionRecovery, SaveWarning};
 
 type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
@@ -136,6 +138,7 @@ pub fn start() {
                     if bridge.is_none() {
                         guard_unload(unsaved.clone());
                     }
+                    let autosave = bridge.as_ref().map(|_| Autosave::new(Instant::now()));
                     Ok(Box::new(WebShell {
                         app,
                         bridge,
@@ -148,6 +151,7 @@ pub fn start() {
                         ui_language: "",
                         actions_revision,
                         prefs_revision: None,
+                        autosave,
                     }))
                 }),
             )
@@ -395,9 +399,34 @@ struct WebShell {
     prefs_revision: Option<u64>,
     /// The interface language whose served script font was last asked for.
     ui_language: &'static str,
+    /// Saves to the host once the document rests (`crate::autosave`); only in host mode.
+    autosave: Option<Autosave>,
 }
 
 impl WebShell {
+    /// Host mode: File › Save (to the host, as Ctrl+S does) once the document in front has had
+    /// unsaved changes and no work for [`crate::autosave::IDLE`]. Only when that Save writes the
+    /// document's own file back without asking: a layered file the host opened (it keeps its name
+    /// as its path) that still holds the whole document. Anything else would be a Save As, which
+    /// autosave never runs.
+    fn autosave(&mut self, ctx: &egui::Context) {
+        let Some(autosave) = &mut self.autosave else { return };
+        let now = Instant::now();
+        let front = self.app.session.active();
+        let in_place = |d: &photocraft_engine::DocState| d.path.as_deref().is_some_and(|p| photocraft_engine::file_cmds::holds_at(&d.doc, p));
+        let dirty = front.is_some_and(|d| d.is_dirty() && in_place(d));
+        let saving = front.is_some_and(|d| photocraft_ui_egui::jobs_ui::save_progress(&self.app, d.doc.id).is_some());
+        let busy = crate::autosave::user_busy(ctx);
+        if autosave.step(front.map(|d| (d.doc.id.0, d.revision)), dirty, busy, saving, now)
+            && let Err(e) = photocraft_ui_egui::menus::invoke(&mut self.app, ctx, "file.save", serde_json::json!({}))
+        {
+            log::warn!("autosave: {e}");
+        }
+        if let Some(wait) = autosave.wake_in(now) {
+            ctx.request_repaint_after(wait);
+        }
+    }
+
     fn save_presets(&mut self, ctx: &egui::Context) {
         let session = &self.app.session;
         if self.actions_revision != session.actions.list.revision() {
@@ -530,6 +559,7 @@ impl eframe::App for WebShell {
         }
         self.serve_fonts(ctx);
         self.app.logic_frame(ctx, frame);
+        self.autosave(ctx);
         self.save_presets(ctx);
     }
 
@@ -577,6 +607,9 @@ impl eframe::App for WebShell {
             });
         }
         self.app.ui_frame(ui, frame);
+        // Again after the UI: an edit made in it starts its idle time now, not at the next pass,
+        // which an idle page may never run.
+        self.autosave(ui.ctx());
         self.save_presets(ui.ctx());
     }
 }
