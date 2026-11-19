@@ -149,4 +149,6 @@ fn a_new_document_saves_as_its_native_file_where_the_host_keeps_only_those() {
     assert!(app.session.set_active(0));
     menus::invoke(&mut app, &ctx, "file.saveAs", json!({})).unwrap();
     assert_eq!(files.requests().last().and_then(|r| r.file_name.clone()).as_deref(), Some("Untitled.pcraft"));
+    answer(&mut app, &files, "Untitled.pcraft");
+    assert_eq!(calls.borrow().last().cloned(), Some(("write_as", "Untitled.pcraft".to_string())), "Save As comes as saveAs:true");
 }

@@ -276,10 +276,7 @@ impl PhotocraftApp {
         });
         let native = st.path.is_none() && self.services.save_new_native;
         let suggested = match &st.path {
-            None if native => {
-                let name = if st.doc.name.trim().is_empty() { UNTITLED } else { st.doc.name.as_str() };
-                std::path::Path::new(name).with_extension(photocraft_format::EXTENSION).to_string_lossy().into_owned()
-            }
+            None if native => native_file_name(&st.doc.name),
             Some(p) if transparent_jpeg => std::path::Path::new(p).with_extension("png").to_string_lossy().into_owned(),
             Some(p) if writable => p.clone(),
             p => {
@@ -882,6 +879,21 @@ impl PhotocraftApp {
     }
 }
 
+/// The .pcraft file a document named `name` saves as when it has none of its own: the whole name
+/// (a dot in it is part of the title, not an extension), with path separators and control
+/// characters made `_`, then `.pcraft`; `Untitled-1.pcraft` when nothing is left.
+pub(crate) fn native_file_name(name: &str) -> String {
+    let ext = photocraft_format::EXTENSION;
+    let clean: String = name.chars().map(|c| if c == '/' || c == '\\' || c.is_control() { '_' } else { c }).collect();
+    let clean = clean.trim();
+    let stem = match clean.len().checked_sub(ext.len() + 1) {
+        Some(at) if clean.is_char_boundary(at) && clean[at..].eq_ignore_ascii_case(&format!(".{ext}")) => clean[..at].trim_end(),
+        _ => clean,
+    };
+    let stem = if stem.chars().all(|c| c == '.') { UNTITLED } else { stem };
+    format!("{stem}.{ext}")
+}
+
 /// The name a new document starts with.
 const UNTITLED: &str = "Untitled-1";
 
@@ -987,3 +999,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+#[cfg(test)]
+#[path = "native_name_tests.rs"]
+mod native_name_tests;
