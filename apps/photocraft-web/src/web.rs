@@ -406,9 +406,9 @@ struct WebShell {
 impl WebShell {
     /// Host mode: File › Save (to the host, as Ctrl+S does) once the document in front has had
     /// unsaved changes and no work for [`crate::autosave::IDLE`]. Only when that Save writes the
-    /// document's own file back without asking: a layered file the host opened (it keeps its name
-    /// as its path) that still holds the whole document. Anything else would be a Save As, which
-    /// autosave never runs.
+    /// document's own file back without asking: a layered file the host opened or a first Save named
+    /// (it keeps that name as its path) that still holds the whole document. Anything else would be
+    /// a Save As, which autosave never runs.
     fn autosave(&mut self, ctx: &egui::Context) {
         let Some(autosave) = &mut self.autosave else { return };
         let now = Instant::now();
@@ -660,6 +660,8 @@ fn services(inbox: Inbox, place_inbox: PlaceInbox, cursor_pos: photocraft_ui_egu
         })),
         write: Some(save_or_download(bridge.clone(), false)),
         write_as: bridge.clone().map(|bridge| save_or_download(Some(bridge), true)),
+        // The portal hosting us keeps only .pcraft files: a new document saves as one.
+        save_new_native: bridge.is_some(),
         // A download may be cancelled and never reports back: it doesn't save the document. A
         // hosting page has the file once it is posted.
         write_unconfirmed: bridge.is_none(),

@@ -10,7 +10,9 @@
 //!   as its file, so Save hands the same file back).
 //! - `photocraft:save` `{ name, bytes, saveAs }` for every file the app would download: Save and
 //!   exports with `saveAs: false` (an export under its own extension), Save As… and Save a Copy…
-//!   with `true`.
+//!   with `true`. A document with no file of its own (a new one, or a flat image) saves as
+//!   `<its name>.pcraft` (`Services::save_new_native`): the host keeps only those. From then on it
+//!   is that file, which Save and autosave write back in place.
 //! - `photocraft:dirty` whenever a document's unsaved changes appear or go away, and
 //!   `photocraft:failed` when the app couldn't start.
 

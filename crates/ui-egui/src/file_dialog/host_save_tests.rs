@@ -122,3 +122,31 @@ fn save_as_is_true_only_for_save_as() {
     answer(&mut app, &files, "other.psd");
     assert_eq!(calls.borrow().last().cloned(), Some(("write", "other.psd".to_string())));
 }
+
+/// A page that keeps only native files (`Services::save_new_native`): a new document's first Save
+/// writes `<its name>.pcraft` as a Save, without a dialog, and the document then has that file as
+/// its own, so later Saves (and the web shell's autosave) write it back in place. Save As… still
+/// asks, offering the same name.
+#[test]
+fn a_new_document_saves_as_its_native_file_where_the_host_keeps_only_those() {
+    let ctx = egui::Context::default();
+    let (mut app, files, calls) = hosted_app();
+    app.services.save_new_native = true;
+    app.run("file.new", json!({"width": 4, "height": 4})).unwrap();
+    app.run("file.new", json!({"width": 4, "height": 4, "name": "Banner"})).unwrap();
+    menus::invoke(&mut app, &ctx, "file.save", json!({})).unwrap();
+    assert!(files.requests().is_empty(), "no dialog: {:?}", files.requests());
+    assert_eq!(*calls.borrow(), [("write", "Banner.pcraft".to_string())]);
+    let st = app.session.active().unwrap();
+    assert_eq!(st.path.as_deref(), Some("Banner.pcraft"));
+    assert!(!st.is_dirty());
+    assert!(photocraft_engine::file_cmds::holds_at(&st.doc, "Banner.pcraft"), "autosave writes it back in place");
+
+    app.run("image.imageRotation.90cw", json!({})).unwrap();
+    menus::invoke(&mut app, &ctx, "file.save", json!({})).unwrap();
+    assert_eq!(calls.borrow().last().cloned(), Some(("write", "Banner.pcraft".to_string())));
+
+    assert!(app.session.set_active(0));
+    menus::invoke(&mut app, &ctx, "file.saveAs", json!({})).unwrap();
+    assert_eq!(files.requests().last().and_then(|r| r.file_name.clone()).as_deref(), Some("Untitled.pcraft"));
+}

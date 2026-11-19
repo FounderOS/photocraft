@@ -530,6 +530,9 @@ pub struct Services {
     /// a new file, so a page hosting the app stores it under a new name instead of over the file
     /// it opened. `None`: they go to `write` as Save does.
     pub write_as: Option<WriteFn>,
+    /// Web, hosted by a page that keeps only PhotoCraft's own files: a document with no file of
+    /// its own saves as `<its name>.pcraft`, and Save writes it without asking (not as a PSD).
+    pub save_new_native: bool,
     /// Size and modification time of a file (native); `None` on the web, where Save never
     /// writes back to a file.
     pub file_stamp: Option<FileStampFn>,

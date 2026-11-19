@@ -274,7 +274,12 @@ impl PhotocraftApp {
                 || (e == "ora" && holds_ora)
                 || (flat && photocraft_formats::from_extension(&e).is_some_and(|f| f.capabilities().write == photocraft_formats::Availability::Available))
         });
+        let native = st.path.is_none() && self.services.save_new_native;
         let suggested = match &st.path {
+            None if native => {
+                let name = if st.doc.name.trim().is_empty() { UNTITLED } else { st.doc.name.as_str() };
+                std::path::Path::new(name).with_extension(photocraft_format::EXTENSION).to_string_lossy().into_owned()
+            }
             Some(p) if transparent_jpeg => std::path::Path::new(p).with_extension("png").to_string_lossy().into_owned(),
             Some(p) if writable => p.clone(),
             p => {
@@ -287,6 +292,10 @@ impl PhotocraftApp {
                 std::path::Path::new(source).with_extension(ext).to_string_lossy().into_owned()
             }
         };
+        // The host keeps only native files and the name is the document's own: nothing to ask.
+        if native && plain_save {
+            return self.save_to(suggested, choices);
+        }
         let doc = st.doc.id;
         self.pick_save(&suggested, move |app, path| {
             app.with_document(doc, |app| {
